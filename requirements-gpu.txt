@@ -1,0 +1,25 @@
+# GPU inference environment for openbmb/MiniCPM-o-4_5 (vLLM-Omni).
+# Keep this separate from the Web application requirements.txt.
+#
+# Install via:
+#   ./scripts/install_vllm_omni.sh --write-lock
+#
+# Official CUDA install order used by the script (vLLM-Omni 0.26 docs):
+#   uv pip install vllm==0.26.0 --torch-backend=auto
+#   uv pip install vllm-omni==0.26.0
+#   uv pip install stepaudio2-minicpmo==0.1.1
+#
+# Do NOT pin torch / torchaudio / torchvision here. vLLM selects CUDA-compatible
+# binaries through --torch-backend=auto. Host requirements:
+#   - Linux
+#   - Python 3.12
+#   - NVIDIA driver + GPU (nvidia-smi)
+#   - system ffmpeg recommended for audio/video media IO
+#
+# stepaudio2-minicpmo is the MiniCPM-o Code2Wav/Talker dependency.
+# Do not replace it with upstream step-audio2 / stepfun-ai packages.
+#
+# Verified package pins against vLLM-Omni MiniCPM-o 4.5 recipe on 2026-08-06.
+vllm==0.26.0
+vllm-omni==0.26.0
+stepaudio2-minicpmo==0.1.1

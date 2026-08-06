@@ -1,0 +1,92 @@
+services:
+  math-coach:
+    build: .
+    ports:
+      - "${MATH_COACH_PORT:-8089}:8089"
+    environment:
+      # Model / upstream
+      VLLM_OMNI_URL: ${VLLM_OMNI_URL:-}
+      MINICPM_GATEWAY_URL: ${MINICPM_GATEWAY_URL:-}
+      MINICPM_MODEL: ${MINICPM_MODEL:-openbmb/MiniCPM-o-4_5}
+      VLLM_OMNI_TLS_VERIFY: ${VLLM_OMNI_TLS_VERIFY:-true}
+      MINICPM_TLS_VERIFY: ${MINICPM_TLS_VERIFY:-true}
+
+      # CORS
+      MATH_COACH_ALLOWED_ORIGINS: ${MATH_COACH_ALLOWED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:3000,http://localhost:3000}
+
+      # Database: sqlite (default) or mysql
+      MATH_COACH_DB_BACKEND: ${MATH_COACH_DB_BACKEND:-sqlite}
+      MATH_COACH_SQLITE_PATH: ${MATH_COACH_SQLITE_PATH:-/app/data/math-coach.db}
+      MATH_COACH_MYSQL_HOST: ${MATH_COACH_MYSQL_HOST:-mysql}
+      MATH_COACH_MYSQL_PORT: ${MATH_COACH_MYSQL_PORT:-3306}
+      MATH_COACH_MYSQL_USER: ${MATH_COACH_MYSQL_USER:-mathcoach}
+      MATH_COACH_MYSQL_PASSWORD: ${MATH_COACH_MYSQL_PASSWORD:-mathcoach}
+      MATH_COACH_MYSQL_DATABASE: ${MATH_COACH_MYSQL_DATABASE:-mathcoach}
+      MATH_COACH_MYSQL_DSN: ${MATH_COACH_MYSQL_DSN:-}
+
+      # Auth / RBAC
+      MATH_COACH_AUTH_REQUIRED: ${MATH_COACH_AUTH_REQUIRED:-true}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-teacher@demo.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-demo123}
+      ADMIN_NICKNAME: ${ADMIN_NICKNAME:-系统管理员}
+      SEED_DEMO_ACCOUNTS: ${SEED_DEMO_ACCOUNTS:-true}
+      DEMO_TEACHER_EMAIL: ${DEMO_TEACHER_EMAIL:-math.teacher@demo.local}
+      DEMO_TEACHER_PASSWORD: ${DEMO_TEACHER_PASSWORD:-demo123}
+      DEMO_TEACHER_NICKNAME: ${DEMO_TEACHER_NICKNAME:-数学老师}
+      DEMO_STUDENT_EMAIL: ${DEMO_STUDENT_EMAIL:-student@demo.local}
+      DEMO_STUDENT_PASSWORD: ${DEMO_STUDENT_PASSWORD:-demo123}
+      DEMO_STUDENT_NICKNAME: ${DEMO_STUDENT_NICKNAME:-演示学生}
+      DEMO_STUDENT_GRADE: ${DEMO_STUDENT_GRADE:-grade8}
+    depends_on:
+      mysql:
+        condition: service_healthy
+        required: false
+    volumes:
+      # SQLite file + any local data artifacts
+      - math_coach_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Optional MySQL profile:
+  #   MATH_COACH_DB_BACKEND=mysql docker compose --profile mysql up --build -d
+  mysql:
+    image: mysql:8.4
+    profiles: ["mysql"]
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_DATABASE: ${MATH_COACH_MYSQL_DATABASE:-mathcoach}
+      MYSQL_USER: ${MATH_COACH_MYSQL_USER:-mathcoach}
+      MYSQL_PASSWORD: ${MATH_COACH_MYSQL_PASSWORD:-mathcoach}
+    ports:
+      - "${MATH_COACH_MYSQL_PUBLISH_PORT:-3306}:3306"
+    volumes:
+      - math_coach_mysql:/var/lib/mysql
+    command:
+      [
+        "mysqld",
+        "--character-set-server=utf8mb4",
+        "--collation-server=utf8mb4_unicode_ci",
+        "--default-authentication-plugin=caching_sha2_password",
+      ]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 25s
+    restart: unless-stopped
+
+volumes:
+  math_coach_data:
+  math_coach_mysql:

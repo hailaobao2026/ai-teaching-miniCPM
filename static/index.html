@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#07111f" />
+    <title>Math Coach | MiniCPM-o 4.5</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="authScreen" class="auth-screen">
+      <div class="auth-card">
+        <div class="auth-brand">
+          <span class="brand-dot"></span>
+          <div>
+            <strong>Math Coach</strong>
+            <span>MiniCPM-o 4.5 · 登录后开始学习</span>
+          </div>
+        </div>
+        <div class="auth-tabs" role="tablist">
+          <button class="auth-tab active" type="button" data-auth-mode="login">登录</button>
+          <button class="auth-tab" type="button" data-auth-mode="register">注册</button>
+        </div>
+        <p class="auth-hint" id="authHint">支持管理员 / 教师 / 学生登录。管理员由系统初始化，不可公开注册。</p>
+        <div class="demo-identities" id="demoIdentities">
+          <span class="muted">快速填充演示账号</span>
+          <div class="demo-row">
+            <button type="button" class="button secondary compact" data-demo="admin">管理员</button>
+            <button type="button" class="button secondary compact" data-demo="teacher">教师</button>
+            <button type="button" class="button secondary compact" data-demo="student">学生</button>
+          </div>
+        </div>
+        <form id="authForm" class="auth-form">
+          <label class="field-label" for="authEmail">邮箱</label>
+          <input id="authEmail" type="email" autocomplete="username" required placeholder="teacher@demo.local" />
+          <label class="field-label hidden" id="authNicknameLabel" for="authNickname">昵称</label>
+          <input id="authNickname" class="hidden" type="text" autocomplete="nickname" placeholder="2-32 字" />
+          <label class="field-label" for="authPassword">密码</label>
+          <input id="authPassword" type="password" autocomplete="current-password" required placeholder="至少 8 位，含字母和数字" />
+          <div id="registerExtra" class="hidden">
+            <label class="field-label" for="authRole">注册角色</label>
+            <select id="authRole">
+              <option value="student">学生</option>
+              <option value="teacher">教师</option>
+            </select>
+            <label class="field-label" id="authGradeLabel" for="authGrade">年级（学生可选）</label>
+            <select id="authGrade">
+              <option value="grade7">初一</option>
+              <option value="grade8" selected>初二</option>
+              <option value="grade9">初三</option>
+              <option value="grade10">高一</option>
+              <option value="grade11">高二</option>
+              <option value="grade12">高三</option>
+            </select>
+          </div>
+          <button class="button primary full" id="authSubmit" type="submit">登录</button>
+          <p class="auth-error hidden" id="authError"></p>
+        </form>
+        <p class="auth-footer muted">演示默认密码：demo123 · 数据保存在服务端本地 auth-db.json</p>
+      </div>
+    </div>
+
+    <div class="app-shell hidden" id="appShell">
+      <aside class="sidebar" aria-label="应用导航">
+        <div class="brand-mark"><span class="brand-dot"></span><span>math / coach</span></div>
+        <div class="sidebar-kicker">全模态数学课堂</div>
+        <nav class="nav-list">
+          <button class="nav-item active" type="button" data-view="workspace"><span class="nav-icon">⌂</span>当前学习</button>
+          <button class="nav-item" id="historyButton" type="button" data-view="history"><span class="nav-icon">◷</span>本地记录</button>
+          <button class="nav-item hidden" id="adminNavButton" type="button" data-view="admin"><span class="nav-icon">⚙</span>管理后台</button>
+        </nav>
+        <div class="sidebar-note" id="workspaceNote">
+          <span class="note-label">今日进度</span>
+          <strong id="progressCount">0 / 3</strong>
+          <div class="progress-track"><span id="progressBar"></span></div>
+          <small>完成一题后会自动更新</small>
+        </div>
+        <div class="sidebar-user" id="sidebarUser">
+          <div class="user-avatar" id="userAvatar">?</div>
+          <div class="user-meta">
+            <strong id="userNickname">未登录</strong>
+            <span id="userRoleLabel">—</span>
+          </div>
+        </div>
+        <button class="button ghost full" id="logoutButton" type="button">退出登录</button>
+        <div class="sidebar-footer">MiniCPM-o 4.5 · turn-based</div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">初中数学 · 引导式学习</p>
+            <h1 id="pageTitle">今天，从一道题开始。</h1>
+          </div>
+          <div class="top-actions">
+            <span class="mode-badge" id="modeBadge"><span class="status-dot"></span>检测中</span>
+            <button class="button secondary" id="saveButton" type="button">保存本题</button>
+            <button class="button ghost" id="resetButton" type="button">重新开始</button>
+          </div>
+        </header>
+
+        <section class="workspace" id="workspaceView" aria-label="数学学习工作区">
+          <section class="panel question-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">01 / 题面</p>
+                <h2>先把题目说清楚</h2>
+              </div>
+              <span class="panel-state" id="questionState">等待题目</span>
+            </div>
+            <div class="source-switch" role="tablist" aria-label="题目来源">
+              <button class="source-tab active" type="button" data-source="upload">拍题 / 上传</button>
+              <button class="source-tab" type="button" data-source="examples">示例题</button>
+            </div>
+            <div class="source-view" id="uploadView">
+              <label class="upload-zone" for="imageInput">
+                <span class="upload-icon" aria-hidden="true">＋</span>
+                <strong>拖入题目图片，或点击上传</strong>
+                <span>支持 JPG、PNG；识别后你可以直接修改</span>
+              </label>
+              <input id="imageInput" type="file" accept="image/png,image/jpeg,image/webp" capture="environment" hidden />
+              <div class="image-preview hidden" id="imagePreviewWrap">
+                <img id="imagePreview" alt="已上传的题目图片" />
+                <canvas id="annotationCanvas" aria-label="AI 题面标注"></canvas>
+                <button class="remove-image" id="removeImage" type="button" aria-label="移除题目图片">×</button>
+              </div>
+              <div class="annotation-status hidden" id="annotationStatus"></div>
+            </div>
+            <div class="source-view hidden" id="examplesView">
+              <div class="example-list" id="exampleList"></div>
+            </div>
+            <label class="field-label" for="problemText">识别出的题面 <span>可编辑</span></label>
+            <textarea id="problemText" class="problem-input" rows="5" placeholder="上传图片后，题面会出现在这里；也可以直接输入题目。"></textarea>
+            <button class="button primary full" id="confirmProblem" type="button">确认题面，开始引导</button>
+            <p class="privacy-note"><span aria-hidden="true">⌁</span> 原始图片只在本次会话使用，保存时仅保留题面与解析。</p>
+          </section>
+
+          <section class="panel lesson-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="panel-kicker">02 / 讲解</p>
+                <h2>让你自己走到答案</h2>
+              </div>
+              <span class="confidence-badge" id="confidenceBadge">未开始</span>
+            </div>
+            <div class="stepper" aria-label="学习阶段">
+              <div class="stepper-item active" data-step="confirm"><span>1</span>题面确认</div>
+              <div class="stepper-line"></div>
+              <div class="stepper-item" data-step="hint"><span>2</span>提示引导</div>
+              <div class="stepper-line"></div>
+              <div class="stepper-item" data-step="explain"><span>3</span>分步讲解</div>
+            </div>
+            <div class="lesson-content" id="lessonContent">
+              <div class="empty-lesson">
+                <div class="empty-orb">?</div>
+                <h3>先确认题面</h3>
+                <p>我会先给提示，再按你的节奏展开步骤。也可以用语音追问「为什么这样变形」。若需要直接看答案，点「查看完整解析」。</p>
+              </div>
+            </div>
+            <div class="composer">
+              <textarea id="messageInput" rows="2" placeholder="告诉老师你卡在哪里，或让老师换一种讲法"></textarea>
+              <div class="composer-actions">
+                <button class="icon-button" id="micButton" type="button" aria-label="按住说话" title="按住说话"><span>♩</span></button>
+                <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
+                <button class="button primary" id="sendButton" type="button">发送提问</button>
+              </div>
+            </div>
+          </section>
+
+          <aside class="panel session-panel">
+            <div class="panel-heading compact">
+              <div>
+                <p class="panel-kicker">03 / 会话</p>
+                <h2>语音课堂</h2>
+              </div>
+              <span class="listening-badge" id="listeningBadge">待机</span>
+            </div>
+            <div class="voice-card">
+              <div class="voice-orb" id="voiceOrb"><span>◌</span></div>
+              <strong id="voiceStatus">按住麦克风开始说话</strong>
+              <small>语音会转成文字并进入当前讲解</small>
+            </div>
+            <div class="history-list" id="chatHistory"></div>
+            <div class="saved-panel hidden" id="savedPanel">
+              <div class="panel-heading compact">
+                <div>
+                  <p class="panel-kicker">本地记录</p>
+                  <h2>已保存的题目</h2>
+                </div>
+                <button class="button ghost" id="closeSaved" type="button">关闭</button>
+              </div>
+              <div id="savedList" class="saved-list"></div>
+            </div>
+          </aside>
+        </section>
+
+        <section class="admin-view hidden" id="adminView" aria-label="管理后台">
+          <div class="admin-grid">
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-kicker">ADMIN / 概览</p>
+                  <h2>系统状态</h2>
+                </div>
+                <button class="button secondary" id="refreshAdmin" type="button">刷新</button>
+              </div>
+              <div class="stat-grid" id="adminStats">
+                <div class="stat-card"><span>用户总数</span><strong>—</strong></div>
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-heading">
+                <div>
+                  <p class="panel-kicker">ADMIN / 用户</p>
+                  <h2>账号管理</h2>
+                </div>
+              </div>
+              <div class="admin-filters">
+                <select id="adminRoleFilter">
+                  <option value="">全部角色</option>
+                  <option value="admin">管理员</option>
+                  <option value="teacher">教师</option>
+                  <option value="student">学生</option>
+                </select>
+                <select id="adminStatusFilter">
+                  <option value="">全部状态</option>
+                  <option value="active">active</option>
+                  <option value="disabled">disabled</option>
+                </select>
+                <input id="adminUserQuery" type="search" placeholder="搜索邮箱/昵称" />
+                <button class="button secondary" id="adminSearchButton" type="button">查询</button>
+              </div>
+              <div class="table-wrap">
+                <table class="admin-table" id="adminUsersTable">
+                  <thead>
+                    <tr>
+                      <th>昵称</th>
+                      <th>邮箱</th>
+                      <th>角色</th>
+                      <th>状态</th>
+                      <th>操作</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <audio id="ttsPlayer" hidden></audio>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

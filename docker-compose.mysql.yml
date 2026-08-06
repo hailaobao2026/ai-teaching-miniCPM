@@ -1,0 +1,12 @@
+# Optional override: wait for MySQL and force mysql backend.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.mysql.yml --profile mysql up --build -d
+services:
+  math-coach:
+    environment:
+      MATH_COACH_DB_BACKEND: mysql
+      MATH_COACH_MYSQL_HOST: mysql
+      MATH_COACH_MYSQL_PORT: "3306"
+    depends_on:
+      mysql:
+        condition: service_healthy

@@ -9,6 +9,7 @@ venv/
 .env
 .env.*
 !.env.example
+.competition.env
 upstream/MiniCPM-o-Demo/
 upstream/vendor/
 *.zip

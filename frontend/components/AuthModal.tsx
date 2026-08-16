@@ -7,19 +7,13 @@ interface AuthModalProps {
   onSuccess: (user: User) => void;
 }
 
-type DemoAccount = { email: string; password: string; label: string };
+type DemoAccount = { email: string; label: string };
 type DemoKey = 'admin' | 'teacher' | 'student';
-
-const DEMO_FALLBACK: Record<DemoKey, DemoAccount> = {
-  admin: { email: 'teacher@demo.local', password: 'demo123', label: '管理员' },
-  teacher: { email: 'math.teacher@demo.local', password: 'demo123', label: '教师' },
-  student: { email: 'student@demo.local', password: 'demo123', label: '学生' },
-};
 
 export default function AuthModal({ config, onSuccess }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>('login');
-  const [email, setEmail] = useState(DEMO_FALLBACK.admin.email);
-  const [password, setPassword] = useState(DEMO_FALLBACK.admin.password);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [role, setRole] = useState<'student' | 'teacher'>('student');
   const [grade, setGrade] = useState('grade8');
@@ -27,22 +21,19 @@ export default function AuthModal({ config, onSuccess }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
 
   const demoAccounts = useMemo(() => {
-    const map: Record<DemoKey, DemoAccount> = {
-      admin: { ...DEMO_FALLBACK.admin },
-      teacher: { ...DEMO_FALLBACK.teacher },
-      student: { ...DEMO_FALLBACK.student },
-    };
+    const map: Partial<Record<DemoKey, DemoAccount>> = {};
     config?.demo_accounts?.forEach((item) => {
       if (item.id === 'admin' || item.id === 'teacher' || item.id === 'student') {
         map[item.id] = {
-          ...map[item.id],
-          email: item.email || map[item.id].email,
-          label: item.label || map[item.id].label,
+          email: item.email,
+          label: item.label || item.id,
         };
       }
     });
     return map;
   }, [config]);
+
+  const demoKeys = (Object.keys(demoAccounts) as DemoKey[]).filter((id) => demoAccounts[id]);
 
   const grades = config?.grades?.length
     ? config.grades
@@ -57,9 +48,10 @@ export default function AuthModal({ config, onSuccess }: AuthModalProps) {
 
   const applyDemo = (id: DemoKey) => {
     const account = demoAccounts[id];
+    if (!account) return;
     setMode('login');
     setEmail(account.email);
-    setPassword(account.password);
+    setPassword('');
     setError('');
   };
 
@@ -123,18 +115,18 @@ export default function AuthModal({ config, onSuccess }: AuthModalProps) {
           </p>
         </div>
 
-        {mode === 'login' && (
+        {mode === 'login' && demoKeys.length > 0 && (
           <div className="px-6 pt-3">
-            <p className="text-xs text-muted mb-2">快速填充演示账号</p>
+            <p className="text-xs text-muted mb-2">快速填充演示邮箱（密码需自行输入，未内置默认密码）</p>
             <div className="flex flex-wrap gap-2">
-              {(Object.keys(demoAccounts) as DemoKey[]).map((id) => (
+              {demoKeys.map((id) => (
                 <button
                   key={id}
                   type="button"
                   onClick={() => applyDemo(id)}
                   className="px-3 py-1.5 rounded-lg border border-line bg-black/20 text-xs text-gray-200 hover:border-blue-500 hover:text-white transition"
                 >
-                  {demoAccounts[id].label}
+                  {demoAccounts[id]?.label}
                 </button>
               ))}
             </div>
@@ -149,7 +141,7 @@ export default function AuthModal({ config, onSuccess }: AuthModalProps) {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="w-full rounded-xl border border-line bg-black/30 px-3 py-2.5 text-sm outline-none focus:border-blue-500"
-            placeholder="teacher@demo.local"
+            placeholder="you@example.com"
             autoComplete="username"
           />
 
@@ -226,7 +218,7 @@ export default function AuthModal({ config, onSuccess }: AuthModalProps) {
         </form>
 
         <div className="px-6 pb-5 text-xs text-muted">
-          演示默认密码：demo123 · 账号数据支持 SQLite / MySQL
+          会话使用 HttpOnly Cookie · 账号数据支持 SQLite / MySQL
         </div>
       </div>
     </div>

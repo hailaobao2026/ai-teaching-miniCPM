@@ -1,4 +1,4 @@
-import { apiRequest, setToken } from './api';
+import { apiRequest, clearClientSession } from './api';
 import type { AppConfig, AuthResponse, User } from '../types';
 
 export async function fetchConfig(): Promise<AppConfig> {
@@ -10,7 +10,7 @@ export async function login(email: string, password: string): Promise<AuthRespon
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
-  setToken(payload.token);
+  clearClientSession();
   return payload;
 }
 
@@ -25,7 +25,7 @@ export async function register(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
-  setToken(payload.token);
+  clearClientSession();
   return payload;
 }
 
@@ -38,7 +38,7 @@ export async function logout(): Promise<void> {
   try {
     await apiRequest('/api/auth/logout', { method: 'POST' });
   } finally {
-    setToken(null);
+    clearClientSession();
   }
 }
 

@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-08-15T20:18:53",
+  "questions_total": 3,
+  "hint_guard_passed": 3,
+  "answer_correct": 3,
+  "request_errors": 0,
+  "p50_full_ms": 18547,
+  "p95_full_ms": 77503,
+  "first_event_ms": [
+    16974,
+    828,
+    833
+  ],
+  "multimodal_probe": {
+    "text": {
+      "ok": true,
+      "latency_ms": 16931,
+      "answer": "x = 6",
+      "audio": false
+    },
+    "tts": {
+      "ok": true,
+      "latency_ms": 11660,
+      "audio_mime": "audio/wav;rate=24000"
+    },
+    "image_recognition": {
+      "ok": false,
+      "latency_ms": 2696,
+      "recognized_problem": "2x + 5 = 17",
+      "annotations": 0
+    }
+  },
+  "results": [
+    {
+      "id": "alg-01",
+      "category": "一元一次方程",
+      "hint_ok": true,
+      "full_ok": true,
+      "answer": "x = 6",
+      "expected_answer": "x = 6",
+      "first_event_ms": 16974,
+      "hint_latency_ms": 4110,
+      "full_latency_ms": 77503,
+      "error": null
+    },
+    {
+      "id": "alg-02",
+      "category": "一元一次方程",
+      "hint_ok": true,
+      "full_ok": true,
+      "answer": "x = 5",
+      "expected_answer": "x = 5",
+      "first_event_ms": 828,
+      "hint_latency_ms": 4440,
+      "full_latency_ms": 17798,
+      "error": null
+    },
+    {
+      "id": "alg-03",
+      "category": "一元一次方程",
+      "hint_ok": true,
+      "full_ok": true,
+      "answer": "x = 5",
+      "expected_answer": "x = 5",
+      "first_event_ms": 833,
+      "hint_latency_ms": 3872,
+      "full_latency_ms": 18547,
+      "error": null
+    }
+  ]
+}

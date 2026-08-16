@@ -3,20 +3,29 @@ from __future__ import annotations
 import re
 
 from .models import LessonResponse, RecognizeResponse, Step
+from .subjects import normalize_subject, subject_name, SUBJECT_FOCUS
 
 
 SAMPLE_PROBLEM = "解方程：2x + 5 = 17。"
 
 EXAMPLES = [
-    {"title": "一元一次方程", "problem": SAMPLE_PROBLEM, "tag": "代数", "level": "初一"},
-    {"title": "一次函数斜率", "problem": "直线 y = 2x - 3 与 x 轴交于点 A，求点 A 的坐标。", "tag": "函数", "level": "初二"},
-    {"title": "三角形面积", "problem": "在三角形 ABC 中，底边 BC=8，高 AD=5，求三角形 ABC 的面积。", "tag": "几何", "level": "初一"},
+    {"id": "math-equation", "subject": "math", "title": "一元一次方程", "problem": SAMPLE_PROBLEM, "tag": "代数", "level": "初一"},
+    {"id": "math-function", "subject": "math", "title": "一次函数斜率", "problem": "直线 y = 2x - 3 与 x 轴交于点 A，求点 A 的坐标。", "tag": "函数", "level": "初二"},
+    {"id": "math-geometry", "subject": "math", "title": "三角形面积", "problem": "在三角形 ABC 中，底边 BC=8，高 AD=5，求三角形 ABC 的面积。", "tag": "几何", "level": "初一"},
+    {"id": "chinese-reading", "subject": "chinese", "title": "阅读理解", "problem": "结合文章内容，概括主人公发生变化的原因。", "tag": "阅读", "level": "小学六年级"},
+    {"id": "english-grammar", "subject": "english", "title": "英语语法", "problem": "Choose the correct tense and explain why: She has lived here for five years.", "tag": "语法", "level": "初二"},
+    {"id": "physics-force", "subject": "physics", "title": "力与运动", "problem": "物体受到水平拉力和摩擦力，如何判断它的运动状态？", "tag": "力学", "level": "初二"},
+    {"id": "chemistry-reaction", "subject": "chemistry", "title": "化学方程式", "problem": "写出水分解的化学方程式，并说明反应类型。", "tag": "化学反应", "level": "初三"},
+    {"id": "politics-material", "subject": "politics", "title": "材料分析", "problem": "结合材料，说明诚信对个人成长和社会发展的意义。", "tag": "道德与法治", "level": "初二"},
+    {"id": "history-cause", "subject": "history", "title": "历史因果", "problem": "根据材料，分析工业革命发生的条件及其影响。", "tag": "世界史", "level": "初三"},
+    {"id": "geography-map", "subject": "geography", "title": "地图判读", "problem": "读等高线地形图，判断山谷、山脊和适合修路的位置。", "tag": "地图", "level": "初一"},
+    {"id": "biology-cell", "subject": "biology", "title": "细胞结构", "problem": "说明细胞膜的结构特点与控制物质进出的功能。", "tag": "生命结构", "level": "初一"},
 ]
 
 
-def recognize(problem_text: str | None = None) -> RecognizeResponse:
+def recognize(problem_text: str | None = None, subject: str = "math") -> RecognizeResponse:
     text = (problem_text or "").strip() or SAMPLE_PROBLEM
-    return RecognizeResponse(problem=text, confidence=0.94 if problem_text else 0.9, source="mock", needs_confirmation=True)
+    return RecognizeResponse(subject=normalize_subject(subject), problem=text, confidence=0.94 if problem_text else 0.9, source="mock", needs_confirmation=True)
 
 
 def _normalise(text: str) -> str:
@@ -32,7 +41,16 @@ def _response(
     confidence: float,
     stage: str,
 ) -> LessonResponse:
+    steps = [
+        Step(
+            title=step.title,
+            body="完整解析后再查看这一步。" if stage == "hint" and step.state == "locked" else step.body,
+            state=step.state,
+        )
+        for step in steps
+    ]
     return LessonResponse(
+        stage=stage,
         reply=hint if stage == "hint" else full,
         steps=steps,
         final_answer=None if stage == "hint" else answer,
@@ -140,13 +158,41 @@ def _coordinates(problem: str, stage: str) -> LessonResponse | None:
     return _response("先回忆坐标变换或距离/中点公式，再把已知坐标代入。", full, steps, answer, "你能先写出这类题的公式吗？", 0.95, stage)
 
 
-def lesson(problem: str, message: str, stage: str) -> LessonResponse:
+def _generic_subject_lesson(problem: str, message: str, stage: str, subject: str) -> LessonResponse:
+    name = subject_name(subject)
+    focus = SUBJECT_FOCUS[normalize_subject(subject)]
+    locked = "完整解析后再查看这一步。" if stage == "hint" else "先用题干中的证据完成这一环。"
+    steps = [
+        Step(title="提取信息", body=f"先圈出题干中的关键词、已知条件和问题目标，关注{focus}。", state="done"),
+        Step(title="建立依据", body=f"回忆{ name }的相关概念或规律，把题干信息与知识点对应起来。", state="active"),
+        Step(title="组织答案", body=locked if stage == "hint" else "用完整句子或规范符号写出结论，并检查是否回应了题目要求。", state="locked" if stage == "hint" else "active"),
+    ]
+    full = f"这是一道{ name }题。先从题干提取关键信息，再依据相关知识点组织答案：{problem}"
+    return _response(
+        f"先别急着写结论：这道{ name }题可以先找出题干证据，再判断它对应哪个知识点。你已经确认了哪些条件？",
+        full,
+        steps,
+        "请根据题干证据写出结论。",
+        "你能先指出题目中的关键词或已知条件吗？",
+        0.78,
+        stage,
+    )
+
+
+def lesson(problem: str, message: str, stage: str, subject: str = "math") -> LessonResponse:
     problem = problem.strip()
+    subject = normalize_subject(subject)
+    if subject != "math":
+        response = _generic_subject_lesson(problem, message, stage, subject)
+        response.subject = subject
+        response.source = "mock"
+        return response
     for solver in (_equation, _factor, _function, _geometry, _coordinates):
         result = solver(problem, stage)
         if result:
             return result
     return LessonResponse(
+        stage=stage,
         reply="我先把题目拆成几个小问题。请告诉我：你已经知道哪些条件，卡在哪一步？",
         steps=[Step(title="确认题意", body="请检查题面中的已知量、未知量和求解目标。", state="active"), Step(title="选择方法", body="根据题型选择方程、函数或几何关系。", state="locked"), Step(title="逐步验证", body="每完成一步，都检查等式或单位是否合理。", state="locked")],
         final_answer=None,

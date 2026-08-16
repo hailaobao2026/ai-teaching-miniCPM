@@ -1,0 +1,5 @@
+# MiniCPM-o-4_5 vLLM-Omni 客户端依赖
+openai>=1.40.0          # OpenAI 兼容客户端（已支持 modalities 参数）
+websockets>=12.0        # 半双工实时语音对话（Realtime WebSocket）
+numpy>=1.24             # 音频处理
+soundfile>=0.12         # 读取 wav/ogg/mp3/flac 音频

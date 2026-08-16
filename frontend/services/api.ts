@@ -18,27 +18,46 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null) {
   onUnauthorized = handler;
 }
 
+/** @deprecated Prefer HttpOnly cookie session; kept for transitional Bearer clients. */
 export function getToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || '';
+  try {
+    return localStorage.getItem(TOKEN_KEY) || '';
+  } catch {
+    return '';
+  }
 }
 
+/** @deprecated Prefer HttpOnly cookie session. */
 export function setToken(token: string | null | undefined) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  try {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+    else localStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function clearClientSession() {
+  setToken(null);
 }
 
 export async function apiRequest<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers || {});
+  // Optional transitional Bearer support (e.g. non-browser clients). Browsers rely on cookies.
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(path, {
+    ...options,
+    headers,
+    credentials: 'include',
+  });
 
   if (response.status === 401) {
-    setToken(null);
+    clearClientSession();
     onUnauthorized?.();
   }
 

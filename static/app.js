@@ -1,12 +1,9 @@
 const TOKEN_KEY = 'math_coach_token';
 const PROGRESS_KEY = 'mathCoachProgress';
 const SAVED_KEY = 'mathCoachSaved';
+const MAX_RECORDING_SECONDS = 60;
 
-const DEMO_ACCOUNTS = {
-  admin: { email: 'teacher@demo.local', password: 'demo123', label: '管理员' },
-  teacher: { email: 'math.teacher@demo.local', password: 'demo123', label: '教师' },
-  student: { email: 'student@demo.local', password: 'demo123', label: '学生' },
-};
+const DEMO_ACCOUNTS = {};
 
 const state = {
   user: null,
@@ -22,6 +19,7 @@ const state = {
   recorder: null,
   stream: null,
   recording: false,
+  recordingTimer: null,
   progress: Number(localStorage.getItem(PROGRESS_KEY) || 0),
   config: null,
 };
@@ -49,6 +47,38 @@ function formatText(value) {
   return escapeHtml(value).replaceAll('\n', '<br>');
 }
 
+async function encodeRecording(buffer, targetSampleRate = 16000) {
+  const audioContext = new AudioContext();
+  try {
+    const decoded = await audioContext.decodeAudioData(buffer.slice(0));
+    const channelCount = Math.min(2, decoded.numberOfChannels) || 1;
+    const channels = Array.from({ length: channelCount }, (_, index) => decoded.getChannelData(index));
+    const ratio = decoded.sampleRate / targetSampleRate;
+    const outputLength = Math.max(1, Math.round(decoded.length / ratio));
+    const output = new Float32Array(outputLength);
+    for (let index = 0; index < outputLength; index += 1) {
+      const start = index * ratio;
+      const end = Math.min(decoded.length, start + ratio);
+      let sum = 0;
+      let count = 0;
+      for (let sample = start; sample < end; sample += 1) {
+        for (const channel of channels) sum += channel[Math.floor(sample)] || 0;
+        count += channelCount;
+      }
+      output[index] = count ? sum / count : 0;
+    }
+    const bytes = new Uint8Array(output.buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
+    }
+    return { base64: btoa(binary), sampleRate: targetSampleRate };
+  } finally {
+    await audioContext.close();
+  }
+}
+
 function getToken() {
   return localStorage.getItem(TOKEN_KEY) || '';
 }
@@ -69,7 +99,7 @@ async function api(path, options = {}) {
   if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const response = await fetch(path, { ...options, headers });
+  const response = await fetch(path, { ...options, headers, credentials: 'include' });
   if (response.status === 401) {
     setToken('');
     state.user = null;
@@ -140,29 +170,35 @@ function syncRegisterFields() {
 function applyDemo(id) {
   const account = DEMO_ACCOUNTS[id];
   if (!account) return;
-  $('#authEmail').value = account.email;
-  $('#authPassword').value = account.password;
-  toast(`已填充${account.label}演示账号`);
+  $('#authEmail').value = account.email || '';
+  $('#authPassword').value = '';
+  toast(`已填充${account.label || id}邮箱，请输入密码`);
 }
 
 async function bootstrapAuth() {
   try {
     state.config = await api('/api/config');
+    // Only expose emails when backend enables SEED_DEMO_ACCOUNTS (no passwords).
+    ['admin', 'teacher', 'student'].forEach((id) => {
+      delete DEMO_ACCOUNTS[id];
+    });
     if (state.config?.demo_accounts?.length) {
       state.config.demo_accounts.forEach((item) => {
-        if (DEMO_ACCOUNTS[item.id]) DEMO_ACCOUNTS[item.id].email = item.email;
+        if (item.id === 'admin' || item.id === 'teacher' || item.id === 'student') {
+          DEMO_ACCOUNTS[item.id] = {
+            email: item.email,
+            label: item.label || item.id,
+          };
+        }
       });
     }
+    const demoBox = $('#demoIdentities');
+    if (demoBox) demoBox.classList.toggle('hidden', !Object.keys(DEMO_ACCOUNTS).length);
   } catch (_) {
     // public config may still work without token
   }
 
-  if (!getToken()) {
-    showAuth();
-    setAuthMode('login');
-    applyDemo('admin');
-    return;
-  }
+  // Prefer HttpOnly cookie session; optional localStorage token for legacy.
   try {
     const me = await api('/api/auth/me');
     state.user = me.user;
@@ -172,7 +208,6 @@ async function bootstrapAuth() {
     setToken('');
     showAuth();
     setAuthMode('login');
-    applyDemo('admin');
   }
 }
 
@@ -200,7 +235,7 @@ async function handleAuthSubmit(event) {
         }),
       });
     }
-    setToken(payload.token);
+    setToken('');
     state.user = payload.user;
     showApp();
     await initWorkspace();
@@ -658,17 +693,18 @@ async function startRecording() {
     recorder.onstop = async () => {
       const blob = new Blob(chunks, { type: 'audio/webm' });
       const buffer = await blob.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = '';
-      bytes.forEach((b) => { binary += String.fromCharCode(b); });
-      const base64 = btoa(binary);
+      const { base64, sampleRate } = await encodeRecording(buffer);
       $('#listeningBadge').textContent = '待机';
       $('#voiceStatus').textContent = '语音已发送，正在讲解';
-      await sendLesson('请根据我的语音继续讲解', state.stage || 'hint', base64, 16000);
+      await sendLesson('请根据我的语音继续讲解', state.stage || 'hint', base64, sampleRate);
     };
     state.recorder = recorder;
     state.recording = true;
     recorder.start();
+    state.recordingTimer = setTimeout(() => {
+      toast('单次录音最长 60 秒');
+      stopRecording();
+    }, MAX_RECORDING_SECONDS * 1000);
     $('#listeningBadge').textContent = '聆听中';
     $('#voiceStatus').textContent = '正在听你说…';
   } catch (_) {
@@ -679,6 +715,10 @@ async function startRecording() {
 function stopRecording() {
   if (!state.recording || !state.recorder) return;
   state.recording = false;
+  if (state.recordingTimer) {
+    clearTimeout(state.recordingTimer);
+    state.recordingTimer = null;
+  }
   state.recorder.stop();
   state.stream?.getTracks?.().forEach((track) => track.stop());
   state.recorder = null;

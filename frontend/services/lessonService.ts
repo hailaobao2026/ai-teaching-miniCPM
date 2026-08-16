@@ -1,13 +1,14 @@
 import { apiRequest, consumeSse, getToken } from './api';
-import type { ExampleItem, LessonResponse, RecognizeResponse, StreamEvent } from '../types';
+import type { ExampleItem, LessonResponse, RecognizeResponse, SpeechResponse, StreamEvent, SubjectCode } from '../types';
 
 export async function fetchExamples(): Promise<ExampleItem[]> {
   return apiRequest<ExampleItem[]>('/api/examples');
 }
 
-export async function recognizeImage(file: File): Promise<RecognizeResponse> {
+export async function recognizeImage(file: File, subject: SubjectCode = 'math'): Promise<RecognizeResponse> {
   const form = new FormData();
   form.append('file', file);
+  form.append('subject', subject);
   return apiRequest<RecognizeResponse>('/api/recognize', {
     method: 'POST',
     body: form,
@@ -21,11 +22,13 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function streamLesson(
   body: {
     problem: string;
+    subject?: SubjectCode;
     message?: string;
     stage?: string;
     session_id?: string | null;
     audio_base64?: string | null;
     sample_rate?: number;
+    tts?: boolean;
   },
   onEvent: (event: StreamEvent) => void,
 ): Promise<void> {
@@ -36,8 +39,19 @@ export async function streamLesson(
   const response = await fetch('/api/lesson/stream', {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      ...body,
+      subject: body.subject || 'math',
+      tts: body.tts ?? false,
+      stage: body.stage === 'confirm' ? 'hint' : body.stage,
+      audio_sample_rate: body.sample_rate,
+    }),
+    credentials: 'include',
   });
+
+  if (response.status === 401) {
+    throw new Error('未登录');
+  }
 
   if (!response.ok) {
     let detail = response.statusText;
@@ -53,8 +67,21 @@ export async function streamLesson(
   await consumeSse(response, (event) => onEvent(event as StreamEvent));
 }
 
+export async function synthesizeSpeech(
+  text: string,
+  subject: SubjectCode,
+  signal?: AbortSignal,
+): Promise<SpeechResponse> {
+  return apiRequest<SpeechResponse>('/api/speech', {
+    method: 'POST',
+    body: JSON.stringify({ text: text.slice(0, 4000), subject }),
+    signal,
+  });
+}
+
 export async function createLesson(body: {
   problem: string;
+  subject?: SubjectCode;
   message?: string;
   stage?: string;
   session_id?: string | null;

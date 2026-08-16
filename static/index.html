@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#07111f" />
-    <title>Math Coach | MiniCPM-o 4.5</title>
+    <title>全科 Coach | MiniCPM-o 4.5</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
@@ -13,7 +13,7 @@
         <div class="auth-brand">
           <span class="brand-dot"></span>
           <div>
-            <strong>Math Coach</strong>
+            <strong>全科 Coach</strong>
             <span>MiniCPM-o 4.5 · 登录后开始学习</span>
           </div>
         </div>
@@ -56,14 +56,14 @@
           <button class="button primary full" id="authSubmit" type="submit">登录</button>
           <p class="auth-error hidden" id="authError"></p>
         </form>
-        <p class="auth-footer muted">演示默认密码：demo123 · 数据保存在服务端本地 auth-db.json</p>
+        <p class="auth-footer muted">会话使用 HttpOnly Cookie · 数据保存在服务端 SQLite/MySQL</p>
       </div>
     </div>
 
     <div class="app-shell hidden" id="appShell">
       <aside class="sidebar" aria-label="应用导航">
         <div class="brand-mark"><span class="brand-dot"></span><span>math / coach</span></div>
-        <div class="sidebar-kicker">全模态数学课堂</div>
+        <div class="sidebar-kicker">中小学全科课堂</div>
         <nav class="nav-list">
           <button class="nav-item active" type="button" data-view="workspace"><span class="nav-icon">⌂</span>当前学习</button>
           <button class="nav-item" id="historyButton" type="button" data-view="history"><span class="nav-icon">◷</span>本地记录</button>
@@ -89,7 +89,7 @@
       <main class="main-content">
         <header class="topbar">
           <div>
-            <p class="eyebrow">初中数学 · 引导式学习</p>
+            <p class="eyebrow">中小学全科 · 引导式学习</p>
             <h1 id="pageTitle">今天，从一道题开始。</h1>
           </div>
           <div class="top-actions">

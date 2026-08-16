@@ -1,0 +1,37 @@
+upstream math_coach {
+    server 127.0.0.1:8089;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    server_name math.example.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name math.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/math.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/math.example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_cache shared:SSL:10m;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    client_max_body_size 10m;
+
+    location / {
+        proxy_pass http://math_coach;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+}

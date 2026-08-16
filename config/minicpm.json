@@ -1,0 +1,6 @@
+{
+  "base_url": "https://minicpm45.duckcloud.fun/v1",
+  "model": "/tmp/pretrainmodel/MiniCPM-o-4_5",
+  "api_key": "",
+  "api_key_env": "MINICPM_API_KEY"
+}

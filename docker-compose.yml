@@ -4,14 +4,13 @@ services:
     ports:
       - "${MATH_COACH_PORT:-8089}:8089"
     environment:
-      # Model / upstream
-      VLLM_OMNI_URL: ${VLLM_OMNI_URL:-}
-      MINICPM_GATEWAY_URL: ${MINICPM_GATEWAY_URL:-}
-      MINICPM_MODEL: ${MINICPM_MODEL:-openbmb/MiniCPM-o-4_5}
+      # Model / upstream: config/minicpm.json is the source of truth.
+      MINICPM_CONFIG_FILE: /app/config/minicpm.json
+      MINICPM_API_KEY: ${MINICPM_API_KEY:-}
       VLLM_OMNI_TLS_VERIFY: ${VLLM_OMNI_TLS_VERIFY:-true}
       MINICPM_TLS_VERIFY: ${MINICPM_TLS_VERIFY:-true}
 
-      # CORS
+      # CORS — override in .env for production (only real HTTPS origin)
       MATH_COACH_ALLOWED_ORIGINS: ${MATH_COACH_ALLOWED_ORIGINS:-http://127.0.0.1:8080,http://localhost:8080,http://127.0.0.1:3000,http://localhost:3000}
 
       # Database: sqlite (default) or mysql
@@ -20,28 +19,39 @@ services:
       MATH_COACH_MYSQL_HOST: ${MATH_COACH_MYSQL_HOST:-mysql}
       MATH_COACH_MYSQL_PORT: ${MATH_COACH_MYSQL_PORT:-3306}
       MATH_COACH_MYSQL_USER: ${MATH_COACH_MYSQL_USER:-mathcoach}
-      MATH_COACH_MYSQL_PASSWORD: ${MATH_COACH_MYSQL_PASSWORD:-mathcoach}
+      # No weak default — set a strong password when using the mysql profile
+      MATH_COACH_MYSQL_PASSWORD: ${MATH_COACH_MYSQL_PASSWORD:-}
       MATH_COACH_MYSQL_DATABASE: ${MATH_COACH_MYSQL_DATABASE:-mathcoach}
       MATH_COACH_MYSQL_DSN: ${MATH_COACH_MYSQL_DSN:-}
 
-      # Auth / RBAC
+      # Auth / RBAC — set a strong ADMIN_PASSWORD in .env (no demo123 default)
       MATH_COACH_AUTH_REQUIRED: ${MATH_COACH_AUTH_REQUIRED:-true}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-teacher@demo.local}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-demo123}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.com}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       ADMIN_NICKNAME: ${ADMIN_NICKNAME:-系统管理员}
-      SEED_DEMO_ACCOUNTS: ${SEED_DEMO_ACCOUNTS:-true}
-      DEMO_TEACHER_EMAIL: ${DEMO_TEACHER_EMAIL:-math.teacher@demo.local}
-      DEMO_TEACHER_PASSWORD: ${DEMO_TEACHER_PASSWORD:-demo123}
+      SEED_DEMO_ACCOUNTS: ${SEED_DEMO_ACCOUNTS:-false}
+      DEMO_TEACHER_EMAIL: ${DEMO_TEACHER_EMAIL:-math.teacher@example.local}
+      DEMO_TEACHER_PASSWORD: ${DEMO_TEACHER_PASSWORD:-}
       DEMO_TEACHER_NICKNAME: ${DEMO_TEACHER_NICKNAME:-数学老师}
-      DEMO_STUDENT_EMAIL: ${DEMO_STUDENT_EMAIL:-student@demo.local}
-      DEMO_STUDENT_PASSWORD: ${DEMO_STUDENT_PASSWORD:-demo123}
+      DEMO_STUDENT_EMAIL: ${DEMO_STUDENT_EMAIL:-student@example.local}
+      DEMO_STUDENT_PASSWORD: ${DEMO_STUDENT_PASSWORD:-}
       DEMO_STUDENT_NICKNAME: ${DEMO_STUDENT_NICKNAME:-演示学生}
       DEMO_STUDENT_GRADE: ${DEMO_STUDENT_GRADE:-grade8}
+
+      # Cookie session + rate limit
+      MATH_COACH_COOKIE_NAME: ${MATH_COACH_COOKIE_NAME:-math_coach_token}
+      MATH_COACH_COOKIE_SECURE: ${MATH_COACH_COOKIE_SECURE:-true}
+      MATH_COACH_COOKIE_SAMESITE: ${MATH_COACH_COOKIE_SAMESITE:-lax}
+      MATH_COACH_ENABLE_HSTS: ${MATH_COACH_ENABLE_HSTS:-true}
+      MATH_COACH_RATE_LIMIT_PER_MINUTE: ${MATH_COACH_RATE_LIMIT_PER_MINUTE:-120}
+      MATH_COACH_AUTH_RATE_LIMIT_PER_MINUTE: ${MATH_COACH_AUTH_RATE_LIMIT_PER_MINUTE:-20}
+      MATH_COACH_TRUST_PROXY_HEADERS: ${MATH_COACH_TRUST_PROXY_HEADERS:-false}
     depends_on:
       mysql:
         condition: service_healthy
         required: false
     volumes:
+      - ./config/minicpm.json:/app/config/minicpm.json:ro
       # SQLite file + any local data artifacts
       - math_coach_data:/app/data
     restart: unless-stopped
@@ -51,7 +61,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/api/health', timeout=3)",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8089/api/health', timeout=3)",
         ]
       interval: 30s
       timeout: 5s
@@ -60,16 +70,17 @@ services:
 
   # Optional MySQL profile:
   #   MATH_COACH_DB_BACKEND=mysql docker compose --profile mysql up --build -d
+  # Require strong MYSQL_ROOT_PASSWORD and MATH_COACH_MYSQL_PASSWORD in .env.
   mysql:
     image: mysql:8.4
     profiles: ["mysql"]
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpass}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD to a strong custom value}
       MYSQL_DATABASE: ${MATH_COACH_MYSQL_DATABASE:-mathcoach}
       MYSQL_USER: ${MATH_COACH_MYSQL_USER:-mathcoach}
-      MYSQL_PASSWORD: ${MATH_COACH_MYSQL_PASSWORD:-mathcoach}
+      MYSQL_PASSWORD: ${MATH_COACH_MYSQL_PASSWORD:?set MATH_COACH_MYSQL_PASSWORD to a strong custom value}
     ports:
-      - "${MATH_COACH_MYSQL_PUBLISH_PORT:-3306}:3306"
+      - "127.0.0.1:${MATH_COACH_MYSQL_PUBLISH_PORT:-3306}:3306"
     volumes:
       - math_coach_mysql:/var/lib/mysql
     command:
@@ -80,7 +91,8 @@ services:
         "--default-authentication-plugin=caching_sha2_password",
       ]
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p${MYSQL_ROOT_PASSWORD:-rootpass}"]
+      # Uses the env var inside the container (set above); do not hardcode passwords.
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p$$MYSQL_ROOT_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 10

@@ -15,6 +15,12 @@ LEGACY_USER_ROLE = "user"
 PUBLIC_REGISTER_ROLES = {ROLES["STUDENT"], ROLES["TEACHER"]}
 
 GRADE_CODES = (
+    "grade1",
+    "grade2",
+    "grade3",
+    "grade4",
+    "grade5",
+    "grade6",
     "grade7",
     "grade8",
     "grade9",
@@ -25,6 +31,12 @@ GRADE_CODES = (
 GRADE_CODE_SET = set(GRADE_CODES)
 
 GRADE_LABELS = {
+    "grade1": "小学一年级",
+    "grade2": "小学二年级",
+    "grade3": "小学三年级",
+    "grade4": "小学四年级",
+    "grade5": "小学五年级",
+    "grade6": "小学六年级",
     "grade7": "初一",
     "grade8": "初二",
     "grade9": "初三",

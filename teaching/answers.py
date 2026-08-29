@@ -10,43 +10,16 @@ from sympy.parsing.sympy_parser import (
     standard_transformations,
 )
 
+from .text_utils import normalize_answer_text
+
 
 _TRANSFORMATIONS = standard_transformations + (implicit_multiplication_application,)
-_UNIT_PATTERN = re.compile(
-    r"(平方厘米|平方单位|厘米|分米|米|单位|个|条|次|度|°)$"
-)
 _COORDINATE_PATTERN = re.compile(r"^\(([^,，;]+)[,，;]([^,，;]+)\)$")
 _ASSIGNMENT_PATTERN = re.compile(r"^([a-zA-Z])\s*=\s*(.+)$")
 
 
 def _normalize(value: str) -> str:
-    text = str(value or "").strip().lower()
-    replacements = {
-        "（": "(",
-        "）": ")",
-        "【": "[",
-        "】": "]",
-        "：": ":",
-        "，": ",",
-        "；": ";",
-        "。": ".",
-        "！": "!",
-        "？": "?",
-        "＋": "+",
-        "－": "-",
-        "×": "*",
-        "÷": "/",
-        "√": "sqrt",
-        "π": "pi",
-        "²": "^2",
-        "³": "^3",
-        "^": "**",
-    }
-    for source, target in replacements.items():
-        text = text.replace(source, target)
-    text = re.sub(r"sqrt(\d+)", r"sqrt(\1)", text)
-    text = _UNIT_PATTERN.sub("", text)
-    return re.sub(r"\s+", "", text)
+    return normalize_answer_text(value)
 
 
 def _parse(text: str) -> Any:

@@ -636,10 +636,9 @@ export default function App() {
       if ((latestLesson.stage === 'explain' || nextStage === 'explain') && latestLesson.final_answer) {
         updateProgressCount(progress + 1);
       }
-      if (latestLesson.source) {
-        setConfig((prev) => (prev ? { ...prev, mode: latestLesson.source || prev.mode } : prev));
-      } else if (streamState.source) {
-        setConfig((prev) => (prev ? { ...prev, mode: streamState.source } : prev));
+      // 单次响应来源不影响全局配置模式：仅在上游降级时提示，不覆盖 config.mode。
+      if (latestLesson.source === 'mock' && mode === 'minicpm') {
+        toast('MiniCPM-o 暂不可用，本次讲解已切换为演示模式。');
       }
     } catch (err) {
       toast(err instanceof Error ? err.message : '讲解失败');

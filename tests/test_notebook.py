@@ -29,7 +29,19 @@ def client(tmp_path, monkeypatch):
     importlib.reload(deps)
     importlib.reload(security)
     importlib.reload(app_module)
-    return TestClient(app_module.app)
+    test_client = TestClient(app_module.app)
+    registered = test_client.post(
+        "/api/auth/register",
+        json={
+            "email": "notebook-test@example.com",
+            "password": STRONG_PASSWORD,
+            "nickname": "错题测试",
+            "role": "student",
+            "grade": "grade8",
+        },
+    )
+    assert registered.status_code == 200
+    return test_client
 
 
 @pytest.fixture()

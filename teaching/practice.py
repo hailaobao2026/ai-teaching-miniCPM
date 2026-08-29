@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import json
-import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from .subjects import normalize_subject, subject_name
+from .text_utils import normalize_problem_text
 
 TOPIC_LABELS = {
     "equation": "一元一次方程",
@@ -33,7 +33,7 @@ def topic_label(topic: str | None) -> str:
 
 
 def _normalise(text: str) -> str:
-    return re.sub(r"[\s，。！？、：；（）()【】\[\]{}]", "", str(text or "").replace("＝", "=").lower())
+    return normalize_problem_text(text)
 
 
 def normalize_problem(text: str) -> str:

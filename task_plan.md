@@ -99,7 +99,7 @@
 
 ### Competition Verification
 
-- [complete] `python3 -m pytest -q`：58 passed。
+- [complete] `python3 -m pytest -q`：85 passed。
 - [complete] `frontend npm run build`：TypeScript 与 Vite 构建通过。
 - [complete] Uvicorn 冒烟：首页、静态资源与公开配置接口 200。
 - [complete] 真实 MiniCPM-o 30 题评测与多模态探测，摘要见 `eval/REAL_MODEL_EVALUATION.md`。

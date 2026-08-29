@@ -45,5 +45,5 @@ RUN mkdir -p /app/data \
 
 USER appuser
 
-EXPOSE 8080
+EXPOSE 8089
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8089"]

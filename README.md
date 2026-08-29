@@ -93,6 +93,7 @@
 #### 前置依赖
 - Python 3.10+（Web 应用；Docker 使用 3.11）
 - Node.js 20+（前端开发 / 构建）
+- Docker 部署：Docker Compose v2（使用 `docker compose` 子命令）
 - 可选：NVIDIA GPU + Python 3.12 + vLLM-Omni（真实推理）
 
 #### 开发模式
@@ -153,8 +154,8 @@ docker compose up --build -d
 # 测试/特殊部署显式覆盖上游地址
 VLLM_OMNI_URL=http://gpu-host:8099 docker compose up --build -d
 
-# 使用 MySQL
-MATH_COACH_DB_BACKEND=mysql docker compose --profile mysql up --build -d
+# 使用 MySQL；覆盖文件会等待 MySQL healthcheck 通过
+MATH_COACH_DB_BACKEND=mysql docker compose -f docker-compose.yml -f docker-compose.mysql.yml --profile mysql up --build -d
 ```
 
 容器默认：

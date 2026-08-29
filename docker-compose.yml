@@ -46,10 +46,6 @@ services:
       MATH_COACH_RATE_LIMIT_PER_MINUTE: ${MATH_COACH_RATE_LIMIT_PER_MINUTE:-120}
       MATH_COACH_AUTH_RATE_LIMIT_PER_MINUTE: ${MATH_COACH_AUTH_RATE_LIMIT_PER_MINUTE:-20}
       MATH_COACH_TRUST_PROXY_HEADERS: ${MATH_COACH_TRUST_PROXY_HEADERS:-false}
-    depends_on:
-      mysql:
-        condition: service_healthy
-        required: false
     volumes:
       - ./config/minicpm.json:/app/config/minicpm.json:ro
       # SQLite file + any local data artifacts
@@ -68,8 +64,8 @@ services:
       retries: 3
       start_period: 20s
 
-  # Optional MySQL profile:
-  #   MATH_COACH_DB_BACKEND=mysql docker compose --profile mysql up --build -d
+  # Optional MySQL profile (dependency is defined in docker-compose.mysql.yml):
+  #   docker compose -f docker-compose.yml -f docker-compose.mysql.yml --profile mysql up --build -d
   # Require strong MYSQL_ROOT_PASSWORD and MATH_COACH_MYSQL_PASSWORD in .env.
   mysql:
     image: mysql:8.4

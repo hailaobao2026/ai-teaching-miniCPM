@@ -30,7 +30,19 @@ def client(tmp_path, monkeypatch):
     importlib.reload(deps)
     importlib.reload(security)
     importlib.reload(app_module)
-    return TestClient(app_module.app)
+    test_client = TestClient(app_module.app)
+    registered = test_client.post(
+        "/api/auth/register",
+        json={
+            "email": "api-test@example.com",
+            "password": "ApiTest-Strong-2026!",
+            "nickname": "接口测试",
+            "role": "student",
+            "grade": "grade8",
+        },
+    )
+    assert registered.status_code == 200
+    return test_client
 
 
 def test_health_defaults_to_mock_mode(client):
@@ -40,10 +52,18 @@ def test_health_defaults_to_mock_mode(client):
     assert response.json()["mode"] == "mock"
 
 
-def test_anonymous_mode_bootstraps_frontend_user(client):
+def test_anonymous_mode_is_read_only(client):
+    client.cookies.clear()
     response = client.get("/api/auth/me")
     assert response.status_code == 200
     assert response.json()["user"]["id"] == "anonymous"
+
+    write_response = client.post(
+        "/api/lesson",
+        json={"problem": "解方程：2x + 5 = 17。", "message": "给我一个提示", "stage": "hint"},
+    )
+    assert write_response.status_code == 401
+    assert write_response.json()["detail"] == "未登录"
 
 
 def test_recognize_returns_editable_problem(client):
@@ -95,7 +115,8 @@ def test_mock_recognized_image_keeps_short_lived_image_context(client):
 
     import app as app_module
 
-    session = app_module.ORCHESTRATOR.get_or_create(payload["session_id"], payload["problem"], "anonymous")
+    owner_id = client.get("/api/auth/me").json()["user"]["id"]
+    session = app_module.ORCHESTRATOR.get_or_create(payload["session_id"], payload["problem"], owner_id)
     assert session.id == payload["session_id"]
     assert session.image_mime == "image/jpeg"
     assert session.image_bytes.startswith(b"\xff\xd8\xff")
@@ -230,6 +251,7 @@ def test_recognized_image_follows_edited_problem_into_lesson(client, monkeypatch
     fake_client = FakeClient()
     app_module.MINICPM_CLIENT = fake_client
     upstream_client = TestClient(app_module.app)
+    upstream_client.cookies.update(client.cookies)
     recognized = upstream_client.post(
         "/api/recognize",
         files={"file": ("problem.png", _png_bytes(), "image/png")},
@@ -359,6 +381,7 @@ def test_failed_real_recognition_without_text_does_not_fall_back_to_sample(clien
     fake_client = FlakyClient()
     app_module.MINICPM_CLIENT = fake_client
     upstream_client = TestClient(app_module.app)
+    upstream_client.cookies.update(client.cookies)
     recognized = upstream_client.post(
         "/api/recognize",
         files={"file": ("problem.png", _png_bytes(), "image/png")},
@@ -592,6 +615,7 @@ def test_speech_endpoint_generates_audio_without_lesson_context(client, monkeypa
     fake_client = SpeechClient()
     app_module.MINICPM_CLIENT = fake_client
     upstream_client = TestClient(app_module.app)
+    upstream_client.cookies.update(client.cookies)
     response = upstream_client.post(
         "/api/speech",
         json={"subject": "history", "text": "工业革命推动了生产力发展。"},
@@ -792,6 +816,7 @@ def test_image_upload_rejects_declared_mime_mismatch(client, monkeypatch):
 
     importlib.reload(app_module)
     upstream_client = TestClient(app_module.app)
+    upstream_client.cookies.update(client.cookies)
     response = upstream_client.post(
         "/api/recognize",
         files={"file": ("problem.png", b"not-a-png", "image/png")},

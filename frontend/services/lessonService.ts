@@ -1,5 +1,5 @@
 import { apiRequest, consumeSse, getToken } from './api';
-import type { ExampleItem, LessonResponse, RecognizeResponse, SpeechResponse, StreamEvent, SubjectCode } from '../types';
+import type { ExampleItem, RecognizeResponse, SpeechResponse, StreamEvent, SubjectCode } from '../types';
 
 export async function fetchExamples(): Promise<ExampleItem[]> {
   return apiRequest<ExampleItem[]>('/api/examples');
@@ -76,18 +76,5 @@ export async function synthesizeSpeech(
     method: 'POST',
     body: JSON.stringify({ text: text.slice(0, 4000), subject }),
     signal,
-  });
-}
-
-export async function createLesson(body: {
-  problem: string;
-  subject?: SubjectCode;
-  message?: string;
-  stage?: string;
-  session_id?: string | null;
-}): Promise<LessonResponse> {
-  return apiRequest<LessonResponse>('/api/lesson', {
-    method: 'POST',
-    body: JSON.stringify(body),
   });
 }

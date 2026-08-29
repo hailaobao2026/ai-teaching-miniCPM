@@ -17,12 +17,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from teaching.answers import answers_equivalent
-from teaching.auth_store import AUTH_STORE, NotebookConflictError, resolve_backend, verify_password
+from teaching.auth_store import AUTH_STORE, NotebookConflictError, db_to_bool, resolve_backend, verify_password
 from teaching.deps import (
     cookie_name,
     cookie_samesite,
     cookie_secure,
     extract_token,
+    get_optional_user,
     require_admin,
     require_user,
     session_ttl_seconds,
@@ -88,7 +89,7 @@ def auth_required() -> bool:
 
 app = FastAPI(
     title="MiniCPM All-Subject Coach",
-    version="0.2.0",
+    version="0.3.0",
     docs_url="/docs" if str(os.getenv("MATH_COACH_ENABLE_DOCS", "false")).lower() in {"1", "true", "yes", "on"} else None,
     redoc_url="/redoc" if str(os.getenv("MATH_COACH_ENABLE_DOCS", "false")).lower() in {"1", "true", "yes", "on"} else None,
     openapi_url="/openapi.json" if str(os.getenv("MATH_COACH_ENABLE_DOCS", "false")).lower() in {"1", "true", "yes", "on"} else None,
@@ -103,6 +104,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
 )
+if not auth_required():
+    LOGGER.warning(
+        "SECURITY WARNING: MATH_COACH_AUTH_REQUIRED=false; anonymous access is limited to read-only requests."
+    )
 
 
 class LoginRequest(BaseModel):
@@ -138,6 +143,21 @@ def _model_dump(model: LessonResponse) -> dict:
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
 
+def _degraded_lesson_response(
+    session: Any,
+    message: str,
+    stage: str,
+    subject: str,
+    exc: Exception,
+) -> LessonResponse:
+    """Fall back to the deterministic mock lesson with a visible degradation prefix."""
+    response = mock_lesson(session.problem, message, stage, subject)
+    response.session_id = session.id
+    response.reply = f"上游暂时不可用，已切换演示讲解。原因：{type(exc).__name__}"
+    ORCHESTRATOR.commit(session, message, response.reply, stage)
+    return response
+
+
 def _set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=cookie_name(),
@@ -160,33 +180,22 @@ def _clear_session_cookie(response: Response) -> None:
     )
 
 
-def _current_user_optional(
-    request: Request,
-    authorization: str | None = Header(default=None),
-) -> dict[str, Any] | None:
-    token = extract_token(request, authorization)
-    user = AUTH_STORE.get_session_user(token)
-    if user and (user.get("status") or "active") != "active":
-        return None
-    return user
-
-
 def _current_user_required(
     request: Request,
     authorization: str | None = Header(default=None),
 ) -> dict[str, Any]:
     if not auth_required():
-        user = _current_user_optional(request, authorization)
+        user = get_optional_user(request, authorization)
         if user:
             return user
-        # Anonymous fallback only when auth is explicitly disabled.
-        return {
-            "id": "anonymous",
-            "email": "anonymous@local",
-            "nickname": "访客",
-            "role": ROLES["STUDENT"],
-            "status": "active",
-        }
+        if request.method in {"GET", "HEAD"}:
+            return {
+                "id": "anonymous",
+                "email": "anonymous@local",
+                "nickname": "访客",
+                "role": ROLES["STUDENT"],
+                "status": "active",
+            }
     return require_user(request, authorization)
 
 
@@ -337,10 +346,6 @@ def _render_pdf_pages(pdf_bytes: bytes) -> list[bytes]:
             page.close()
         if document:
             document.close()
-
-
-def _render_pdf_first_page(pdf_bytes: bytes) -> bytes:
-    return _render_pdf_pages(pdf_bytes)[0]
 
 
 @app.get("/api/health")
@@ -725,11 +730,9 @@ async def lesson(
         return response
     except Exception as exc:
         LOGGER.exception("MiniCPM lesson request failed")
-        response = mock_lesson(session.problem, request.message, request.stage, subject)
-        response.session_id = session.id
-        response.reply = f"上游暂时不可用，已切换演示讲解。原因：{type(exc).__name__}"
-        ORCHESTRATOR.commit(session, request.message, response.reply, request.stage)
-        return response
+        return _degraded_lesson_response(
+            session, request.message, request.stage, subject, exc
+        )
 
 
 @app.post("/api/speech", response_model=SpeechResponse)
@@ -825,12 +828,10 @@ async def lesson_stream(
             yield _sse({"type": "done"})
         except Exception as exc:
             LOGGER.exception("MiniCPM lesson stream failed")
-            response = mock_lesson(session.problem, request.message, request.stage, subject)
-            response.session_id = session.id
-            response.reply = f"上游暂时不可用，已切换演示讲解。原因：{type(exc).__name__}"
-            if response.reply:
-                yield _sse({"type": "text_delta", "text_delta": response.reply})
-            ORCHESTRATOR.commit(session, request.message, response.reply, request.stage)
+            response = _degraded_lesson_response(
+                session, request.message, request.stage, subject, exc
+            )
+            yield _sse({"type": "text_delta", "text_delta": response.reply})
             yield _sse({"type": "lesson", "lesson": _model_dump(response)})
             yield _sse({"type": "done"})
 
@@ -844,7 +845,7 @@ def _public_notebook_item(item: dict[str, Any]) -> dict[str, Any]:
         "problem": item.get("problem"),
         "topic": topic,
         "topic_label": topic_label(topic),
-        "helpful": bool(item.get("helpful")),
+        "helpful": db_to_bool(item.get("helpful")),
         "note": item.get("note") or "",
         "stage": item.get("stage"),
         "final_answer": item.get("final_answer") if item.get("helpful") else None,
@@ -853,7 +854,7 @@ def _public_notebook_item(item: dict[str, Any]) -> dict[str, Any]:
         "attempt_count": int(item.get("attempt_count") or 0),
         "correct_count": int(item.get("correct_count") or 0),
         "latest_attempt": item.get("latest_attempt"),
-        "latest_correct": bool(item.get("latest_correct")),
+        "latest_correct": db_to_bool(item.get("latest_correct")),
         "consecutive_wrong": int(item.get("consecutive_wrong") or 0),
     }
 
@@ -980,7 +981,7 @@ async def submit_notebook_attempt(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    correct = bool(attempt.get("correct"))
+    correct = db_to_bool(attempt.get("correct"))
     attempt_number = int(attempt.get("attempt_number") or 0)
     expected_answer = _retry_answer(updated)
     reveal_answer = not correct and attempt_number >= 3 and bool(expected_answer)

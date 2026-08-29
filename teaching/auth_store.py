@@ -40,6 +40,18 @@ class NotebookConflictError(ValueError):
     """The notebook item cannot transition because another writer changed it."""
 
 
+def db_to_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def bool_to_db(value: Any) -> str:
+    return "1" if db_to_bool(value) else "0"
+
+
 def _password_looks_weak(password: str) -> bool:
     """Reject empty/short/common demo passwords used historically in this repo."""
     value = str(password or "")
@@ -84,6 +96,16 @@ def _utc_now() -> datetime:
 
 def _utc_now_iso() -> str:
     return _utc_now().isoformat().replace("+00:00", "Z")
+
+
+def _to_iso(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+    return str(value)
 
 
 def _generate_id(prefix: str) -> str:
@@ -311,13 +333,7 @@ class AuthStore:
         if row is None:
             return None
         mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
-        created = mapping.get("created_at")
-        if isinstance(created, datetime):
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            created_at = created.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-        else:
-            created_at = created
+        created_at = _to_iso(mapping.get("created_at"))
         return {
             "id": mapping.get("id"),
             "email": mapping.get("email"),
@@ -622,20 +638,14 @@ class AuthStore:
         if row is None:
             return None
         mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
-        created = mapping.get("created_at")
-        if isinstance(created, datetime):
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            created_at = created.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-        else:
-            created_at = created
+        created_at = _to_iso(mapping.get("created_at"))
         helpful_raw = mapping.get("helpful")
         return {
             "id": mapping.get("id"),
             "user_id": mapping.get("user_id"),
             "problem": mapping.get("problem"),
             "topic": mapping.get("topic") or "general",
-            "helpful": str(helpful_raw).lower() in {"1", "true", "yes"},
+            "helpful": db_to_bool(helpful_raw),
             "note": mapping.get("note") or "",
             "stage": mapping.get("stage"),
             "final_answer": mapping.get("final_answer"),
@@ -650,13 +660,7 @@ class AuthStore:
         if row is None:
             return None
         mapping = dict(row._mapping) if hasattr(row, "_mapping") else dict(row)
-        created = mapping.get("created_at")
-        if isinstance(created, datetime):
-            if created.tzinfo is None:
-                created = created.replace(tzinfo=timezone.utc)
-            created_at = created.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-        else:
-            created_at = created
+        created_at = _to_iso(mapping.get("created_at"))
         correct_raw = mapping.get("correct")
         return {
             "id": mapping.get("id"),
@@ -664,7 +668,7 @@ class AuthStore:
             "user_id": mapping.get("user_id"),
             "attempt_number": int(mapping.get("attempt_number") or 0),
             "answer": mapping.get("answer"),
-            "correct": str(correct_raw).lower() in {"1", "true", "yes"},
+            "correct": db_to_bool(correct_raw),
             "hint_level": int(mapping.get("hint_level") or 0),
             "created_at": created_at,
         }
@@ -689,7 +693,7 @@ class AuthStore:
         update = self._sa["update"]
         values = {
             "topic": topic or "general",
-            "helpful": "1" if helpful else "0",
+            "helpful": bool_to_db(helpful),
             "note": (note or "")[:500],
             "stage": stage,
             "final_answer": (final_answer or None),
@@ -739,9 +743,9 @@ class AuthStore:
         select = self._sa["select"]
         stmt = select(self.notebook_items).where(self.notebook_items.c.user_id == user_id)
         if filter_kind == "wrong":
-            stmt = stmt.where(self.notebook_items.c.helpful == "0")
+            stmt = stmt.where(self.notebook_items.c.helpful == bool_to_db(False))
         elif filter_kind == "mastered":
-            stmt = stmt.where(self.notebook_items.c.helpful == "1")
+            stmt = stmt.where(self.notebook_items.c.helpful == bool_to_db(True))
         if topic:
             stmt = stmt.where(self.notebook_items.c.topic == topic)
         limit = max(1, min(100, int(limit or 50)))
@@ -764,7 +768,7 @@ class AuthStore:
                 select(
                     self.notebook_attempts.c.notebook_item_id,
                     func.count(),
-                    func.sum(self.notebook_attempts.c.correct == "1"),
+                    func.sum(self.notebook_attempts.c.correct == bool_to_db(True)),
                     func.max(self.notebook_attempts.c.created_at),
                 )
                 .where(self.notebook_attempts.c.user_id == user_id)
@@ -780,18 +784,19 @@ class AuthStore:
             ).fetchall()
         latest_by_item: dict[str, dict[str, Any]] = {}
         consecutive_wrong_by_item: dict[str, int] = {}
+        completed_streaks: set[str] = set()
         for row in latest_rows:
-            latest = self._row_to_notebook_attempt(row)
-            if latest:
-                item_id = str(latest.get("notebook_item_id"))
-                if item_id not in latest_by_item:
-                    latest_by_item[item_id] = latest
-                    if latest.get("correct"):
-                        consecutive_wrong_by_item[item_id] = 0
-                    else:
-                        consecutive_wrong_by_item[item_id] = 1
-                elif not latest.get("correct") and consecutive_wrong_by_item.get(item_id, 0) > 0:
-                    consecutive_wrong_by_item[item_id] += 1
+            attempt = self._row_to_notebook_attempt(row)
+            if not attempt:
+                continue
+            item_id = str(attempt.get("notebook_item_id"))
+            latest_by_item.setdefault(item_id, attempt)
+            if item_id in completed_streaks:
+                continue
+            if attempt.get("correct"):
+                completed_streaks.add(item_id)
+                continue
+            consecutive_wrong_by_item[item_id] = consecutive_wrong_by_item.get(item_id, 0) + 1
         for row in rows:
             by_item[str(row[0])] = {
                 "count": int(row[1] or 0),
@@ -802,14 +807,9 @@ class AuthStore:
             summary = by_item.get(str(item["id"]))
             if not summary:
                 continue
-            latest = summary["latest"]
-            if isinstance(latest, datetime):
-                if latest.tzinfo is None:
-                    latest = latest.replace(tzinfo=timezone.utc)
-                latest = latest.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+            latest = _to_iso(summary["latest"])
             item["attempt_count"] = summary["count"]
             item["correct_count"] = summary["correct"]
-            item["latest_attempt_at"] = latest
             item["latest_attempt"] = latest
             latest_attempt = latest_by_item.get(str(item["id"]))
             item["latest_correct"] = bool(latest_attempt and latest_attempt.get("correct"))
@@ -829,7 +829,7 @@ class AuthStore:
             {
                 "problem": row[0],
                 "topic": row[1],
-                "helpful": str(row[2]).lower() in {"1", "true", "yes"},
+                "helpful": db_to_bool(row[2]),
             }
             for row in rows
         ]
@@ -913,7 +913,7 @@ class AuthStore:
                 if not item_row:
                     raise ValueError("错题不存在")
                 item = dict(item_row._mapping)
-                if str(item.get("helpful")).lower() in {"1", "true", "yes"}:
+                if db_to_bool(item.get("helpful")):
                     raise NotebookConflictError("这题已掌握，无需重复重练")
                 correct = evaluate_answer(item)
                 attempt_number = int(
@@ -933,7 +933,7 @@ class AuthStore:
                         user_id=user_id,
                         attempt_number=attempt_number,
                         answer=answer[:500],
-                        correct="1" if correct else "0",
+                        correct=bool_to_db(correct),
                         hint_level=0 if correct else min(3, attempt_number),
                         created_at=_utc_now(),
                     )
@@ -942,7 +942,7 @@ class AuthStore:
                     conn.execute(
                         update(self.notebook_items)
                         .where(self.notebook_items.c.id == item_id)
-                        .values(helpful="1")
+                        .values(helpful=bool_to_db(True))
                     )
                 attempt_row = conn.execute(
                     select(self.notebook_attempts).where(self.notebook_attempts.c.id == attempt_id)
@@ -983,12 +983,12 @@ class AuthStore:
                 if not item_row:
                     raise ValueError("错题不存在")
                 item = dict(item_row._mapping)
-                if str(item.get("helpful")).lower() in {"1", "true", "yes"}:
+                if db_to_bool(item.get("helpful")):
                     raise NotebookConflictError("这题已掌握，无需重复标记")
                 summary = conn.execute(
                     select(
                         func.count(),
-                        func.sum(self.notebook_attempts.c.correct == "1"),
+                        func.sum(self.notebook_attempts.c.correct == bool_to_db(True)),
                         func.max(self.notebook_attempts.c.hint_level),
                     )
                     .where(
@@ -1009,7 +1009,7 @@ class AuthStore:
                 conn.execute(
                     update(self.notebook_items)
                     .where(self.notebook_items.c.id == item_id)
-                    .values(helpful="1")
+                    .values(helpful=bool_to_db(True))
                 )
         item = self.get_notebook_item(user_id, item_id)
         if not item:
@@ -1028,7 +1028,7 @@ class AuthStore:
             mastered = conn.execute(
                 select(func.count()).select_from(self.notebook_items).where(
                     (self.notebook_items.c.user_id == user_id)
-                    & (self.notebook_items.c.helpful == "1")
+                    & (self.notebook_items.c.helpful == bool_to_db(True))
                 )
             ).scalar() or 0
         total = int(total)

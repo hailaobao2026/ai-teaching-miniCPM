@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-import re
-
 from .models import LessonResponse, RecognizeResponse, Step
 from .subjects import normalize_subject, subject_name, SUBJECT_FOCUS
+from .text_utils import normalize_problem_text
 
 
 SAMPLE_PROBLEM = "解方程：2x + 5 = 17。"
@@ -29,7 +28,7 @@ def recognize(problem_text: str | None = None, subject: str = "math") -> Recogni
 
 
 def _normalise(text: str) -> str:
-    return re.sub(r"[\s，。！？、：；（）()【】\[\]{}]", "", text.replace("＝", "=").lower())
+    return normalize_problem_text(text)
 
 
 def _response(

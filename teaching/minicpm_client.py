@@ -74,11 +74,6 @@ class MiniCPMClient:
     def completions_url(self) -> str:
         return f"{self.base_url}/chat/completions"
 
-    @property
-    def ws_url(self) -> str:
-        """Compatibility alias retained for callers/tests from the Gateway adapter."""
-        return self.completions_url
-
     @staticmethod
     def _data_url(data: bytes, mime: str) -> str:
         return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"

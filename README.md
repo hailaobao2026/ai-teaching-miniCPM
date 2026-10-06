@@ -470,7 +470,7 @@ Browser ──HTTPS──► FastAPI :8089  (托管 frontend/dist + /api)
 
 欢迎加入技术交流群，分享教学 AI 落地与全模态课堂心得：
 
-![技术交流群](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/image-20260927104256287.png)
+![技术交流群](https://mypicture-1258720957.cos.ap-nanjing.myqcloud.com/Obsidian/20261006103418_155_9.jpg)
 
 ## 作者联系
 
